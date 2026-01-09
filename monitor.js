@@ -67,15 +67,18 @@ async function run() {
     });
 
     try {
-      await resend.emails.send({
+      console.log('Sending email via Resend...');
+      const result = await resend.emails.send({
         from: 'Opportunity-Bot <onboarding@resend.dev>',
         to: 'wogeshou888@gmail.com', 
         subject: `RSS Success: ${posts.length} Posts Found`,
         html: htmlContent
       });
-      console.log('Email sent via RSS trigger!');
+      console.log('Resend API Response:', JSON.stringify(result)); // 打印 API 的真实响应
+      console.log('Email sent successfully!');
     } catch (e) {
-      console.error('Email failed:', e.message);
+      console.error('Email failed Error Name:', e.name);
+      console.error('Email failed Message:', e.message);
     }
   } else {
     console.log('No posts found via RSS.');
