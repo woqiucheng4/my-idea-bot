@@ -23,7 +23,7 @@ async function fetchReddit() {
       const url = `https://www.reddit.com/r/${config.subreddit}/new.json?limit=10`;
       const response = await axios.get(url, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) OpportunityBot/1.0'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) OpportunityBot/1.0 (by /u/LectureDelicious7788)'
         }
       });
       const posts = response.data.data.children;
