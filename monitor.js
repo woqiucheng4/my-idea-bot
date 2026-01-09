@@ -62,7 +62,7 @@ async function run() {
 
     await resend.emails.send({
       from: 'Opportunity-Bot <onboarding@resend.dev>',
-      to: 'wogeshou888@163.com', 
+      to: 'wogeshou888@gmail.com', 
       subject: `🚀 发现 ${posts.length} 个 Reddit 新需求`,
       html: htmlContent
     });
