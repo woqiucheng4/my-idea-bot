@@ -58,7 +58,7 @@ async function run() {
 
     await resend.emails.send({
       from: 'Opportunity-Bot <onboarding@resend.dev>',
-      to: '你的收件邮箱@xxx.com', // FIXME: 记得改成你自己的邮箱！
+      to: 'wogeshou888@163.com', 
       subject: `🚀 发现 ${posts.length} 个 Reddit 新需求`,
       html: htmlContent
     });
