@@ -21,7 +21,12 @@ async function fetchReddit() {
     try {
       // 获取该版块最新的 JSON 数据
       const url = `https://www.reddit.com/r/${config.subreddit}/new.json?limit=10`;
-      const response = await axios.get(url);
+      const response = await axios.get(url, {
+        headers: {
+          // 这里的 User-Agent 可以随便写一个独特的字符串
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) OpportunityBot/1.0 (by /u/你的Reddit用户名)'
+        }
+      });
       const posts = response.data.data.children;
 
       for (const { data: post } of posts) {
