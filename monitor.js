@@ -70,7 +70,7 @@ async function run() {
       console.log('Sending email via Resend...');
       const result = await resend.emails.send({
         from: 'Opportunity-Bot <onboarding@resend.dev>',
-        to: 'woqiucheng@163.com', 
+        to: 'chadqiu0721@gmail.com', 
         subject: `RSS Success: ${posts.length} Posts Found`,
         html: htmlContent
       });
