@@ -5,9 +5,13 @@ const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // 你想监控的 Reddit 版块和关键词
+// const MONITOR_CONFIG = [
+//   { subreddit: 'SaaS', keywords: ['looking for', 'alternative to', 'annoying', 'how to'] },
+//   { subreddit: 'smallbusiness', keywords: ['struggling with', 'automate', 'software'] }
+// ];
 const MONITOR_CONFIG = [
-  { subreddit: 'SaaS', keywords: ['looking for', 'alternative to', 'annoying', 'how to'] },
-  { subreddit: 'smallbusiness', keywords: ['struggling with', 'automate', 'software'] }
+  { subreddit: 'SaaS', keywords: [''] }, // 空字符串意味着匹配所有帖子
+  { subreddit: 'programming', keywords: [''] }
 ];
 
 async function fetchReddit() {
