@@ -101,7 +101,7 @@ async function run() {
 
   await resend.emails.send({
     from: 'Insight-Bot <onboarding@resend.dev>',
-    to: 'woqiucheng@163.com',
+    to: 'chadqiu0721@gmail.com',
     subject: `📈 发现 ${posts.length} 个潜在商业切入点`,
     html: emailHtml
   });
