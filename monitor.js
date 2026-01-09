@@ -1,63 +1,67 @@
 const axios = require('axios');
 const { Resend } = require('resend');
 
-// 初始化 Resend
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// 暴力测试模式：匹配所有新贴
+// 使用 RSS 链接，这通常能绕过 API 的 403 封锁
 const MONITOR_CONFIG = [
-  { subreddit: 'SaaS', keywords: [''] },
-  { subreddit: 'programming', keywords: [''] }
+  { subreddit: 'SaaS' },
+  { subreddit: 'programming' }
 ];
 
-async function fetchReddit() {
+async function fetchRedditRSS() {
   let foundPosts = [];
   
   for (const config of MONITOR_CONFIG) {
     try {
-      const url = `https://www.reddit.com/r/${config.subreddit}/new.json?limit=10`;
+      // 这里的后缀改成了 .rss
+      const url = `https://www.reddit.com/r/${config.subreddit}/new.rss`;
       const response = await axios.get(url, {
         headers: {
-          // 彻底去除所有中文和特殊说明，使用最标准的 UA
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebkit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Reeder/5.0'
         }
       });
       
-      const posts = response.data.data.children;
-
-      for (const { data: post } of posts) {
-        const title = post.title.toLowerCase();
-        const hasKeyword = config.keywords.some(k => title.includes(k));
-
-        if (hasKeyword) {
-          foundPosts.push({
-            subreddit: config.subreddit,
-            title: post.title,
-            url: `https://www.reddit.com${post.permalink}`,
-            content: post.selftext ? (post.selftext.substring(0, 200) + '...') : 'No content'
-          });
-        }
+      const xml = response.data;
+      
+      // 简单的正则解析 XML 中的标题和链接（不需要安装额外的 XML 解析库）
+      const entryMatches = xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g);
+      
+      for (const match of entryMatches) {
+        const entry = match[1];
+        const title = entry.match(/<title>([\s\S]*?)<\/title>/)?.[1] || 'No Title';
+        const link = entry.match(/<link href="([\s\S]*?)"/)?.[1] || '';
+        
+        // 因为是暴力测试模式，直接存入
+        foundPosts.push({
+          subreddit: config.subreddit,
+          title: title,
+          url: link,
+          content: 'New post from RSS feed'
+        });
+        
+        // 每个版块只抓前 3 个测试
+        if (foundPosts.length >= 3) break;
       }
+      console.log(`Successfully fetched ${config.subreddit} via RSS`);
     } catch (error) {
-      // 这里的错误日志能帮我们确认是否依然被封
-      console.error(`Fetch ${config.subreddit} failed:`, error.message);
+      console.error(`RSS Fetch ${config.subreddit} failed:`, error.message);
     }
   }
   return foundPosts;
 }
 
 async function run() {
-  console.log('Starting scan...');
-  const posts = await fetchReddit();
+  console.log('Starting RSS scan...');
+  const posts = await fetchRedditRSS();
 
   if (posts.length > 0) {
-    let htmlContent = `<h2>Found New Opportunities</h2>`;
+    let htmlContent = `<h2>RSS Discovery</h2>`;
     posts.forEach(p => {
       htmlContent += `
         <div style="margin-bottom: 20px; border-bottom: 1px solid #ccc;">
           <h3>[r/${p.subreddit}] ${p.title}</h3>
-          <p>${p.content}</p>
-          <a href="${p.url}">Link</a>
+          <a href="${p.url}">View Post</a>
         </div>
       `;
     });
@@ -66,15 +70,15 @@ async function run() {
       await resend.emails.send({
         from: 'Opportunity-Bot <onboarding@resend.dev>',
         to: 'wogeshou888@gmail.com', 
-        subject: `Success: Found ${posts.length} Reddit Posts`,
+        subject: `RSS Success: ${posts.length} Posts Found`,
         html: htmlContent
       });
-      console.log('Email sent successfully!');
+      console.log('Email sent via RSS trigger!');
     } catch (e) {
       console.error('Email failed:', e.message);
     }
   } else {
-    console.log('No matching posts found this time.');
+    console.log('No posts found via RSS.');
   }
 }
 
