@@ -1,28 +1,51 @@
 name: Market Intelligence Bot
+
 on:
   schedule:
-    - cron: '0 */1 * * *' # 每4小时运行一次，节省 AI 额度
-  workflow_dispatch:
+    - cron: '0 */4 * * *' # 严格设定：每 4 小时运行一次
+  workflow_dispatch: # 保留手动触发按钮
+
+# 防止多个任务同时运行导致 history.json 冲突
+concurrency:
+  group: market-bot
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 必须设为 0 才能确保 Git 能正常 push
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm install axios resend
+
+      - name: Install dependencies
+        run: npm install axios resend
+
       - name: Run Bot
         env:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: node monitor.js
+
       - name: Save History
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+          # 关键：先拉取远程更新，防止 push 冲突
+          git pull origin main --rebase
           git add history.json
-          git commit -m "Update lead history" || echo "No changes"
-          git push
+          # 只有在文件有变化时才提交
+          if ! git diff --cached --quiet; then
+            git commit -m "Update lead history [skip ci]"
+            git push origin main
+          else
+            echo "No changes in history.json, skipping push."
+          fi
