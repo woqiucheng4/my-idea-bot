@@ -1,7 +1,7 @@
 name: Market Intelligence Bot
 on:
   schedule:
-    - cron: '0 */4 * * *' # 每4小时运行一次，节省 AI 额度
+    - cron: '0 */1 * * *' # 每4小时运行一次，节省 AI 额度
   workflow_dispatch:
 jobs:
   build:
