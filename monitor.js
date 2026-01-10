@@ -9,9 +9,9 @@ const HISTORY_FILE = './history.json';
 
 // 1. 细分领域配置
 const MONITOR_CONFIG = [
-  { subreddit: 'SaaS', keywords: ['alternative to', 'annoying', 'is there an app', 'tired of', ''] },
-  { subreddit: 'smallbusiness', keywords: ['manually', 'spreadsheet', 'automate', 'expensive', ''] },
-  { subreddit: 'RealEstate', keywords: ['software', 'management', 'tool', 'frustrated', ''] }
+  { subreddit: 'SaaS', keywords: ['alternative to', 'annoying', 'is there an app', 'tired of'] },
+  { subreddit: 'smallbusiness', keywords: ['manually', 'spreadsheet', 'automate', 'expensive'] },
+  { subreddit: 'RealEstate', keywords: ['software', 'management', 'tool', 'frustrated'] }
 ];
 
 // 鲁棒加载历史记录
