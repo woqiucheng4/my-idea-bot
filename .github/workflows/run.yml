@@ -2,10 +2,11 @@ name: Market Intelligence Bot
 
 on:
   schedule:
-    - cron: '0 */4 * * *' # 严格设定：每 4 小时运行一次
+    # 设定：每 4 小时运行一次
+    - cron: '0 */4 * * *' 
   workflow_dispatch: # 保留手动触发按钮
 
-# 防止多个任务同时运行导致 history.json 冲突
+# 并发控制：如果前一个任务没跑完，新的任务会自动排队或取消，防止 history.json 冲突
 concurrency:
   group: market-bot
   cancel-in-progress: true
@@ -14,12 +15,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # 关键：必须开启写权限才能推送到仓库
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 必须设为 0 才能确保 Git 能正常 push
+          fetch-depth: 0 # 获取完整提交历史，避免 git push 时报错
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -36,16 +38,26 @@ jobs:
         run: node monitor.js
 
       - name: Save History
+        # 这一段脚本完整解决了 Error 128 (Unstaged changes) 导致的无法 pull 的问题
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          # 关键：先拉取远程更新，防止 push 冲突
-          git pull origin main --rebase
+          
+          # 1. 检查 history.json 是否有变化
           git add history.json
-          # 只有在文件有变化时才提交
+          
           if ! git diff --cached --quiet; then
+            echo "检测到数据更新，正在保存..."
+            
+            # 2. 先 commit 这里的修改
             git commit -m "Update lead history [skip ci]"
+            
+            # 3. 关键：拉取远程更新并进行变基合并
+            # -X ours 意味着如果冲突，以本次抓取的新数据为准
+            git pull origin main --rebase -X ours
+            
+            # 4. 最后推送
             git push origin main
           else
-            echo "No changes in history.json, skipping push."
+            echo "数据未发生变化，无需更新。"
           fi
