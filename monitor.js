@@ -2,49 +2,84 @@ const axios = require('axios');
 const { Resend } = require('resend');
 const fs = require('fs');
 
-// 初始化 API 客户端
 const resend = new Resend(process.env.RESEND_API_KEY);
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 const HISTORY_FILE = './history.json';
 
-// 1. 细分领域配置
+// --- 配置区 ---
+const RECEIVERS = ['chadqiu0721@gmail.com'];
+
 const MONITOR_CONFIG = [
-  { subreddit: 'SaaS', keywords: ['alternative to', 'annoying', 'is there an app', 'tired of'] },
-  { subreddit: 'smallbusiness', keywords: ['manually', 'spreadsheet', 'automate', 'expensive'] },
-  { subreddit: 'RealEstate', keywords: ['software', 'management', 'tool', 'frustrated'] }
+  { 
+    subreddit: 'SaaS', 
+    keywords: [
+      { word: 'alternative to', weight: 3 },
+      { word: 'bloated', weight: 3 }, // 吐槽臃肿
+      { word: 'too complex', weight: 2 },
+      { word: 'missing', weight: 2 }
+    ]
+  },
+  { 
+    subreddit: 'Productivity', 
+    keywords: [
+      { word: 'too many features', weight: 3 },
+      { word: 'simple alternative', weight: 3 },
+      { word: 'tired of', weight: 1 },
+      { word: 'overwhelming', weight: 2 }
+    ]
+  },
+  { 
+    subreddit: 'AppIdeas', 
+    keywords: [
+      { word: 'does this exist', weight: 3 },
+      { word: 'request', weight: 2 },
+      { word: 'someone build', weight: 3 }
+    ]
+  },
+  { 
+    subreddit: 'Shopify', 
+    keywords: [
+      { word: 'too slow', weight: 2 },
+      { word: 'missing feature', weight: 3 },
+      { word: 'expensive app', weight: 2 }
+    ]
+  }
 ];
 
-// 鲁棒加载历史记录
+const SCORE_THRESHOLD = 3; 
+
+// --- 逻辑区 ---
+
 let history = [];
 try {
   if (fs.existsSync(HISTORY_FILE)) {
-    const content = fs.readFileSync(HISTORY_FILE, 'utf8');
-    history = content ? JSON.parse(content) : [];
+    history = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8') || '[]');
   }
-} catch (e) {
-  console.log('[Log] 历史记录读取失败，重置为空');
-  history = [];
-}
+} catch (e) { history = []; }
 
-async function analyzeWithAI(title, content) {
-  if (!DEEPSEEK_API_KEY) return "（未配置 DeepSeek API Key）";
-  
+async function analyzeWithAI(title, subreddit) {
+  if (!DEEPSEEK_API_KEY) return "AI Key 未配置";
   try {
-    console.log(`[AI] 正在分析标题: ${title.substring(0, 30)}...`);
     const response = await axios.post('https://api.deepseek.com/chat/completions', {
       model: "deepseek-chat",
       messages: [
-        { role: "system", content: "你是一个资深全栈开发和产品经理。请分析用户发帖内容，用中文总结其核心痛点、现有工具的不足，并给出一个可盈利的小型软件解决方案建议。" },
-        { role: "user", content: `标题: ${title}\n内容摘要: ${content}` }
+        { 
+          role: "system", 
+          content: `你是一个毒舌但专业的全栈开发和产品经理。请分析用户对现有App的吐槽或新需求：
+          1. 吐槽点/缺失点：用户最讨厌现有工具的哪一个具体功能或缺失？
+          2. 盈利机会：如果做一个“极简版”或“增强版”，用户愿意付钱吗？
+          3. 技术实现：给出一个 3 天内能写完的 MVP 功能建议。
+          请用中文回答。` 
+        },
+        { role: "user", content: `标题: ${title}` }
       ]
     }, {
-      headers: { 'Authorization': `Bearer ${DEEPSEEK_API_KEY}`, 'Content-Type': 'application/json' },
-      timeout: 30000 // 30秒超时
+      headers: { 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` },
+      timeout: 30000 
     });
     return response.data.choices[0].message.content;
   } catch (e) {
-    console.error(`[AI Error] 失败原因: ${e.message}`);
-    return "AI 分析暂时不可用，建议直接查看原帖内容。";
+    return "AI 忙碌，请直接看原帖。";
   }
 }
 
@@ -52,83 +87,67 @@ async function fetchRedditRSS() {
   let foundPosts = [];
   for (const config of MONITOR_CONFIG) {
     try {
-      console.log(`[Fetch] 正在同步 r/${config.subreddit} 的最新动态...`);
       const url = `https://www.reddit.com/r/${config.subreddit}/new.rss`;
-      const response = await axios.get(url, { 
-         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Reeder/5.0'
-        }
-      });
+      const response = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 Reeder/5.0' } });
       const xml = response.data;
       const entryMatches = Array.from(xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g));
       
-      console.log(`[Log] r/${config.subreddit} 获取到 ${entryMatches.length} 条原始帖子`);
-
       for (const match of entryMatches) {
         const entry = match[1];
-        const title = entry.match(/<title>([\s\S]*?)<\/title>/)?.[1] || '';
+        const title = (entry.match(/<title>([\s\S]*?)<\/title>/)?.[1] || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
         const link = entry.match(/<link href="([\s\S]*?)"/)?.[1] || '';
         const id = link.split('/').slice(-3, -2)[0] || link;
 
-        // 如果 ID 已经在历史记录里，跳过
         if (history.includes(id)) continue;
 
         const titleLower = title.toLowerCase();
-        // 如果命中关键词
-        if (config.keywords.some(k => titleLower.includes(k))) {
+        let currentScore = 0;
+        config.keywords.forEach(k => {
+          if (titleLower.includes(k.word)) currentScore += k.weight;
+        });
+
+        if (currentScore >= SCORE_THRESHOLD) {
           foundPosts.push({ id, subreddit: config.subreddit, title, url: link });
         }
       }
-    } catch (e) {
-      console.error(`[Fetch Error] r/${config.subreddit} 访问受限: ${e.message}`);
-    }
+    } catch (e) { console.error(`[Error] r/${config.subreddit}: ${e.message}`); }
   }
   return foundPosts;
 }
 
 async function run() {
-  console.log('=== 探测任务启动 ===');
   const posts = await fetchRedditRSS();
-  
-  if (posts.length === 0) {
-    console.log('=== 探测结果：没有发现符合条件的新商机 ===');
-    return;
-  }
+  if (posts.length === 0) return console.log('未发现满足权重的吐槽或需求。');
 
-  console.log(`[Log] 筛选出 ${posts.length} 个新商机，开始 AI 深度分析...`);
-  let emailHtml = `<h1 style="color: #333;">🚀 商机探测简报</h1>`;
-  
-  // 为了防止 AI 接口并发报错，我们一个一个来
-  for (const p of posts) {
-    const aiAnalysis = await analyzeWithAI(p.title, "请访问原帖详情");
+  const targetPosts = posts.slice(0, 3);
+  let emailHtml = `<h1 style="color: #e67e22;">🧨 用户槽点与新需求探测</h1>`;
+
+  for (const p of targetPosts) {
+    const aiAnalysis = await analyzeWithAI(p.title, p.subreddit);
     emailHtml += `
-      <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 8px; font-family: sans-serif;">
-        <h2 style="color: #007bff; border-bottom: 2px solid #007bff; padding-bottom: 5px;">[r/${p.subreddit}] ${p.title}</h2>
-        <p><b>🔍 AI 商业透视：</b></p>
-        <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; color: #444; line-height: 1.6;">${aiAnalysis.replace(/\n/g, '<br>')}</div>
-        <p style="margin-top: 15px;"><a href="${p.url}" style="color: #28a745; font-weight: bold;">查看 Reddit 原帖地址 &rarr;</a></p>
+      <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #e67e22; border-left: 10px solid #e67e22; background-color: #fffaf5;">
+        <span style="background: #e67e22; color: white; padding: 2px 8px; border-radius: 3px;">r/${p.subreddit}</span>
+        <h2 style="margin-top: 10px;">${p.title}</h2>
+        <div style="color: #2c3e50; line-height: 1.6;">${aiAnalysis.replace(/\n/g, '<br>')}</div>
+        <p><a href="${p.url}" style="color: #e67e22; font-weight: bold;">去 Reddit 围观吐槽 &rarr;</a></p>
       </div>`;
     history.push(p.id);
   }
 
-  // 限制历史记录数量，保存文件
-  if (history.length > 500) history = history.slice(-500);
+  if (history.length > 1000) history = history.slice(-500);
   fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2));
-  console.log('[Log] 历史记录已同步至 local');
 
   try {
-    console.log('[Mail] 正在推送至您的邮箱...');
-    const res = await resend.emails.send({
-      from: 'Market-Intelligence <onboarding@resend.dev>',
-      to: 'chadqiu0721@gmail.com', // 已经为您更新为新邮箱
-      subject: `发现 ${posts.length} 个细分市场切入点`,
+    await resend.emails.send({
+      from: 'Market-Rant-Bot <onboarding@resend.dev>',
+      to: RECEIVERS,
+      subject: `发现 ${targetPosts.length} 个对现有 App 的吐槽/新需求`,
       html: emailHtml
     });
-    console.log('[Success] 邮件推送成功，Resend ID:', res.data?.id);
+    console.log('推送成功！');
   } catch (e) {
-    console.error('[Mail Error] 推送失败:', e.message);
+    console.error('发送失败:', e.message);
   }
-  console.log('=== 任务圆满完成 ===');
 }
 
 run();
