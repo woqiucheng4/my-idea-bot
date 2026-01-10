@@ -2,8 +2,8 @@ name: Market Intelligence Bot
 
 on:
   schedule:
-    # 设定：每 4 小时运行一次
-    - cron: '0 */4 * * *' 
+    # 设定：每天运行一次 (UTC 0:00，北京时间上午 8 点)
+    - cron: '0 0 * * *' 
   workflow_dispatch: # 保留手动触发按钮
 
 # 并发控制：如果前一个任务没跑完，新的任务会自动排队或取消，防止 history.json 冲突

@@ -118,12 +118,17 @@ Region: ${item.region}`;
 async function runRedditDiscovery() {
   console.log('[Reddit] Starting discovery...');
   let foundPosts = [];
+  let totalScanned = 0;
+
   for (const config of REDDIT_CONFIG) {
     try {
       const url = `https://www.reddit.com/r/${config.subreddit}/new.rss`;
       const response = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 Reeder/5.0' } });
       const xml = response.data;
       const entryMatches = Array.from(xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g));
+
+      let subredditMatches = 0;
+      totalScanned += entryMatches.length;
 
       for (const match of entryMatches) {
         const entry = match[1];
@@ -141,10 +146,21 @@ async function runRedditDiscovery() {
 
         if (currentScore >= SCORE_THRESHOLD) {
           foundPosts.push({ id, subreddit: config.subreddit, title, url: link, type: 'REDDIT' });
+          subredditMatches++;
         }
       }
-    } catch (e) { console.error(`[Reddit] Error r/${config.subreddit}: ${e.message}`); }
+      console.log(`[Reddit] r/${config.subreddit}: Scanned ${entryMatches.length} posts, found ${subredditMatches} relevant topics.`);
+    } catch (e) {
+      console.error(`[Reddit] Error r/${config.subreddit}: ${e.message}`);
+    }
   }
+
+  if (foundPosts.length === 0) {
+    console.log('[Reddit] No relevant new topics found today.');
+  } else {
+    console.log(`[Reddit] Discovery finished. Total scanned: ${totalScanned}, Total relevant posts found: ${foundPosts.length}`);
+  }
+
   return foundPosts.slice(0, 3); // Limit to top 3 new posts
 }
 
@@ -229,6 +245,8 @@ async function run() {
     runRedditDiscovery(),
     runAppStoreDiscovery()
   ]);
+
+  console.log(`--- Discovery Summary: Found ${redditFindings.length} Reddit topics and ${appFindings.length} App Store apps to analyze. ---`);
 
   if (redditFindings.length === 0 && appFindings.length === 0) {
     console.log('No new insights found today.');
