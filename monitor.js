@@ -281,15 +281,20 @@ async function run() {
 
   // Send Email
   try {
-    await resend.emails.send({
+    const data = await resend.emails.send({
       from: 'Global-Insight-Bot <onboarding@resend.dev>',
       to: RECEIVERS,
       subject: `[${new Date().toLocaleDateString()}] 全球信息差 & 用户槽点日报`,
       html: emailHtml
     });
-    console.log('✅ 邮件推送成功！');
+
+    if (data.error) {
+      console.error('❌ 邮件发送失败 (Resend Error):', data.error);
+    } else {
+      console.log('✅ 邮件推送成功！ID:', data.data ? data.data.id : 'N/A');
+    }
   } catch (e) {
-    console.error('❌ 邮件发送失败:', e.message);
+    console.error('❌ 邮件发送异常:', e.message);
   }
 }
 
