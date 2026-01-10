@@ -171,16 +171,17 @@ async function runAppStoreDiscovery() {
   console.log('[AppStore] Starting discovery...');
   // 1. Fetch data
   const [cnApps, usApps] = await Promise.all([
-    fetchGlobalTopPaid('cn', 200),
-    fetchGlobalTopPaid('us', 200)
+    fetchGlobalTopPaid('cn', 50),
+    fetchGlobalTopPaid('us', 50)
   ]);
 
-  const usIds = new Set(usApps.map(a => a.id));
   const cnIds = new Set(cnApps.map(a => a.id));
 
   // 2. Identify Arbitrage Opportunities
   // Logic: High rank in US (Top 100), but NOT in CN Top 200
-  const highPotentialArbitrage = usApps.slice(0, 100).filter(app => !cnIds.has(app.id));
+  const highPotentialArbitrage = usApps
+    .filter(app => !app.isGame)
+    .filter(app => !cnIds.has(app.id));
 
   console.log(`[AppStore] Found ${highPotentialArbitrage.length} potential arbitrage apps.`);
 
@@ -207,6 +208,7 @@ async function runAppStoreDiscovery() {
 
   // Javascript sort is in-place, create copy
   const sortedApps = allApps
+    .filter(a => !a.isGame)
     .filter(a => !history.includes(a.id) && !candidates.find(c => c.id === a.id))
     .map(a => ({ ...a, score: calculatePriority(a) }))
     .sort((a, b) => b.score - a.score);

@@ -1,12 +1,32 @@
 const axios = require('axios');
 
-async function fetchGlobalTopPaid(region, limit = 200) {
+/**
+ * 辅助函数：延迟执行
+ */
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * 辅助函数：带重试机制的 GET 请求
+ */
+async function getWithRetry(url, options = {}, retries = 2, delay = 3000) {
+    for (let i = 0; i <= retries; i++) {
+        try {
+            return await axios.get(url, { ...options, timeout: 15000 });
+        } catch (err) {
+            if (i === retries) throw err;
+            console.warn(`[Retry] Request failed, retrying in ${delay / 1000}s... (${i + 1}/${retries})`);
+            await sleep(delay);
+        }
+    }
+}
+
+async function fetchGlobalTopPaid(region, limit = 50) {
     try {
         console.log(`[AppStore] Fetching Top ${limit} Paid Apps for region: ${region}`);
-        
-        // 1. Fetch Top Paid App IDs via RSS
+
+        // 1. Fetch Top Paid App IDs via RSS V2 API
         const rssUrl = `https://rss.applemarketingtools.com/api/v2/${region}/apps/top-paid/${limit}/apps.json`;
-        const rssResponse = await axios.get(rssUrl);
+        const rssResponse = await getWithRetry(rssUrl);
         const feed = rssResponse.data.feed;
         const apps = feed.results;
 
@@ -19,7 +39,6 @@ async function fetchGlobalTopPaid(region, limit = 200) {
         console.log(`[AppStore] Got ${appIds.length} IDs. Fetching details...`);
 
         // 2. Batch fetch details via iTunes Lookup API
-        // iTunes Lookup API has a limit on URL length, so we batch requests.
         const batchSize = 50;
         const detailsMap = new Map();
 
@@ -27,8 +46,8 @@ async function fetchGlobalTopPaid(region, limit = 200) {
             const batchIds = appIds.slice(i, i + batchSize).join(',');
             try {
                 const lookupUrl = `https://itunes.apple.com/lookup?id=${batchIds}&country=${region}`;
-                const lookupResponse = await axios.get(lookupUrl);
-                
+                const lookupResponse = await getWithRetry(lookupUrl);
+
                 if (lookupResponse.data && lookupResponse.data.results) {
                     lookupResponse.data.results.forEach(detail => {
                         detailsMap.set(detail.trackId.toString(), detail);
@@ -42,23 +61,24 @@ async function fetchGlobalTopPaid(region, limit = 200) {
         // 3. Merge RSS position with detailed data
         const enrichedApps = apps.map((app, index) => {
             const detail = detailsMap.get(app.id) || {};
-            
+            const primaryGenre = detail.primaryGenreName || (app.genres && app.genres[0] ? app.genres[0].name : "");
+
             return {
                 id: app.id,
-                name: app.name, // RSS usually has good names
+                name: app.name,
                 artistName: app.artistName,
                 rank: index + 1,
                 iconUrl: app.artworkUrl100,
                 appUrl: app.url,
-                // Details from Lookup
-                price: detail.price,         // number, e.g. 4.99
-                priceFormatted: detail.formattedPrice, // string, e.g. "$4.99"
+                price: detail.price,
+                priceFormatted: detail.formattedPrice,
                 currency: detail.currency,
                 description: detail.description,
                 rating: detail.averageUserRating,
                 ratingCount: detail.userRatingCount,
-                genres: detail.genres || [], // array of strings
-                primaryGenre: detail.primaryGenreName,
+                genres: detail.genres || [],
+                primaryGenre: primaryGenre,
+                isGame: primaryGenre === 'Games', // 识别是否为游戏
                 bundleId: detail.bundleId,
                 releaseDate: detail.releaseDate,
                 currentVersionReleaseDate: detail.currentVersionReleaseDate
