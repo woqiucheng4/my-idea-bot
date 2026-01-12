@@ -48,6 +48,28 @@ const REDDIT_CONFIG = [
   }
 ];
 
+const RSSHUB_BASE = 'https://rsshub.app';
+const RSSHUB_CONFIG = [
+  {
+    name: 'V2EX',
+    url: `${RSSHUB_BASE}/v2ex/topics/latest?filter=求推荐|怎么没有|吐槽|痛点`,
+    type: 'RSS',
+    keywords: ['求推荐', '怎么没有', '吐槽', '痛点']
+  },
+  {
+    name: 'Xiaohongshu (via Bing)',
+    // site:xiaohongshu.com (求推荐 OR 怎么没有 OR 吐槽)
+    url: `${RSSHUB_BASE}/bing/search/site:xiaohongshu.com%20(%E6%B1%82%E6%8E%A8%E8%8D%90%20OR%20%E6%80%8E%E4%B9%88%E6%B2%A1%E6%9C%89%20OR%20%E5%90%90%E6%A7%BD)`,
+    type: 'SEARCH'
+  },
+  {
+    name: 'Zhihu (via Bing)',
+    // site:zhihu.com/question (求推荐 OR 怎么没有 OR 吐槽)
+    url: `${RSSHUB_BASE}/bing/search/site:zhihu.com%2Fquestion%20(%E6%B1%82%E6%8E%A8%E8%8D%90%20OR%20%E6%80%8E%E4%B9%88%E6%B2%A1%E6%9C%89%20OR%20%E5%90%90%E6%A7%BD)`,
+    type: 'SEARCH'
+  }
+];
+
 const SCORE_THRESHOLD = 3;
 
 // --- 逻辑区 ---
@@ -95,13 +117,13 @@ Description: ${item.description ? item.description.slice(0, 500) + "..." : "No d
 Region: ${item.region}`;
 
   } else {
-    // Reddit Prompt
-    systemPrompt = `你是一个毒舌但专业的全栈开发和产品经理。请分析用户对现有App的吐槽或新需求：
+    // Reddit & Social Media Prompt
+    systemPrompt = `你是一个毒舌但专业的全栈开发和产品经理。请分析用户在社交媒体（Reddit/小红书/V2EX/知乎）上的吐槽或新需求：
 1. 吐槽点/缺失点：用户最讨厌现有工具的哪一个具体功能或缺失？
 2. 盈利机会：如果做一个“极简版”或“增强版”，用户愿意付钱吗？
 3. 技术实现：给出一个 3 天内能写完的 MVP 功能建议。
 请用中文回答。`;
-    userContent = `标题: ${item.title}\nSubreddit: ${item.subreddit}`;
+    userContent = `标题: ${item.title}\nSource: ${item.source || item.subreddit}`;
   }
 
   // Add context about why we picked this app (riser/low rating)
@@ -176,6 +198,70 @@ async function runRedditDiscovery() {
   }
 
   return foundPosts.slice(0, 3); // Limit to top 3 new posts
+}
+
+// --- RSSHub Monitor ---
+
+async function runRSSHubDiscovery() {
+  console.log('[RSSHub] Starting discovery...');
+  let foundItems = [];
+  let totalScanned = 0;
+
+  for (const config of RSSHUB_CONFIG) {
+    try {
+      // Use a browser-like user agent to avoid some blockings
+      const response = await axios.get(config.url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+        timeout: 10000
+      });
+      const xml = response.data;
+
+      // Match <item> (RSS 2.0) or <entry> (Atom)
+      // RSSHub usually returns RSS 2.0 for these routes, but let's be safe
+      const itemMatches = Array.from(xml.matchAll(/<item>([\s\S]*?)<\/item>/g));
+
+      totalScanned += itemMatches.length;
+      let relevantCount = 0;
+
+      for (const match of itemMatches) {
+        const entry = match[1];
+        const title = (entry.match(/<title>([\s\S]*?)<\/title>/)?.[1] || '').replace(/<!\[CDATA\[|\]\]>/g, '').trim();
+        const link = (entry.match(/<link>([\s\S]*?)<\/link>/)?.[1] || '').trim();
+        const guid = (entry.match(/<guid.*?>([\s\S]*?)<\/guid>/)?.[1] || link).trim();
+
+        if (!title || !link) continue;
+        if (history.includes(guid)) continue;
+
+        // Double check keywords if needed (though RSSHub filter/search might have done it)
+        // For search results, we trust the engine. For V2EX filter, we trust RSSHub.
+        // We can just add them.
+
+        foundItems.push({
+          id: guid,
+          source: config.name,
+          title: title,
+          url: link,
+          type: 'SOCIAL'
+        });
+        relevantCount++;
+      }
+      console.log(`[RSSHub] ${config.name}: Scanned ${itemMatches.length} items, found ${relevantCount} new items.`);
+    } catch (e) {
+      console.error(`[RSSHub] Error ${config.name}: ${e.message}`);
+    }
+  }
+
+  // Deduplicate by URL just in case
+  const uniqueItems = [];
+  const seenUrls = new Set();
+  for (const item of foundItems) {
+    if (!seenUrls.has(item.url)) {
+      seenUrls.add(item.url);
+      uniqueItems.push(item);
+    }
+  }
+
+  return uniqueItems.slice(0, 5); // Limit to top 5 social items
 }
 
 // --- App Store Monitor ---
@@ -271,14 +357,15 @@ async function run() {
   console.log('--- Global Monitor Started ---');
 
   // Parallel execution of discovery
-  const [redditFindings, appFindings] = await Promise.all([
+  const [redditFindings, appFindings, rssFindings] = await Promise.all([
     runRedditDiscovery(),
-    runAppStoreDiscovery()
+    runAppStoreDiscovery(),
+    runRSSHubDiscovery()
   ]);
 
-  console.log(`--- Discovery Summary: Found ${redditFindings.length} Reddit topics and ${appFindings.length} App Store apps to analyze. ---`);
+  console.log(`--- Discovery Summary: Found ${redditFindings.length} Reddit topics, ${rssFindings.length} Social items, and ${appFindings.length} App Store apps. ---`);
 
-  if (redditFindings.length === 0 && appFindings.length === 0) {
+  if (redditFindings.length === 0 && appFindings.length === 0 && rssFindings.length === 0) {
     console.log('No new insights found today.');
     return;
   }
@@ -298,6 +385,24 @@ async function run() {
               <h3 style="margin-top: 10px; color: #333;">${item.title}</h3>
               <div style="color: #555; font-size: 14px; line-height: 1.6;">${analysis.replace(/\n/g, '<br>')}</div>
               <p><a href="${item.url}" style="color: #e67e22; font-weight: bold; text-decoration: none;">去 Reddit 围观 &rarr;</a></p>
+            </div>`;
+      history.push(item.id);
+    }
+  }
+
+  // --- Process Social Media (RSSHub) ---
+  if (rssFindings.length > 0) {
+    emailHtml += `<h2 style="color: #8e44ad; border-bottom: 2px solid #8e44ad; padding-bottom: 5px; margin-top: 40px;">💬 社交媒体热议 (CN)</h2>`;
+    for (const item of rssFindings) {
+      console.log(`Analyzing Social: ${item.title}`);
+      const analysis = await callDeepSeek(item, 'SOCIAL');
+
+      emailHtml += `
+            <div style="margin-bottom: 30px; padding: 15px; background-color: #fcf6ff; border-radius: 8px;">
+              <span style="background: #8e44ad; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">${item.source}</span>
+              <h3 style="margin-top: 10px; color: #333;">${item.title}</h3>
+              <div style="color: #555; font-size: 14px; line-height: 1.6;">${analysis.replace(/\n/g, '<br>')}</div>
+              <p><a href="${item.url}" style="color: #8e44ad; font-weight: bold; text-decoration: none;">查看原文 &rarr;</a></p>
             </div>`;
       history.push(item.id);
     }
