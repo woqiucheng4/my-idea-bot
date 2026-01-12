@@ -198,8 +198,8 @@ function calculatePriority(app) {
 }
 
 async function runAppStoreDiscovery() {
-  console.log('[AppStore] Starting discovery (Rank 50-200)...');
-  const limit = 200; // Apple RSS API max stable limit
+  console.log('[AppStore] Starting discovery (Rank Top 100)...');
+  const limit = 100; // Apple RSS API max stable limit for V2 is 100. 200/300 often 500s.
   const [cnApps, usApps] = await Promise.all([
     fetchGlobalTopPaid('cn', limit),
     fetchGlobalTopPaid('us', limit)

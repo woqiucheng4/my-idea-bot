@@ -11,7 +11,14 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 async function getWithRetry(url, options = {}, retries = 2, delay = 3000) {
     for (let i = 0; i <= retries; i++) {
         try {
-            return await axios.get(url, { ...options, timeout: 15000 });
+            return await axios.get(url, {
+                ...options,
+                timeout: 15000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    ...options.headers
+                }
+            });
         } catch (err) {
             if (i === retries) throw err;
             console.warn(`[Retry] Request failed, retrying in ${delay / 1000}s... (${i + 1}/${retries})`);
@@ -20,12 +27,13 @@ async function getWithRetry(url, options = {}, retries = 2, delay = 3000) {
     }
 }
 
-async function fetchGlobalTopPaid(region, limit = 50) {
+async function fetchGlobalTopPaid(region, limit = 100) {
     try {
         console.log(`[AppStore] Fetching Top ${limit} Paid Apps for region: ${region}`);
 
         // 1. Fetch Top Paid App IDs via RSS V2 API
-        const rssUrl = `https://rss.applemarketingtools.com/api/v2/${region}/apps/top-paid/${limit}/apps.json`;
+        // Note: rss.marketingtools.apple.com is the new domain. limit > 100 often causes 500.
+        const rssUrl = `https://rss.marketingtools.apple.com/api/v2/${region}/apps/top-paid/${limit}/apps.json`;
         const rssResponse = await getWithRetry(rssUrl);
         const feed = rssResponse.data.feed;
         const apps = feed.results;
