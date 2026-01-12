@@ -55,10 +55,10 @@ jobs:
             
             # 3. 关键：拉取远程更新并进行变基合并
             # -X ours 意味着如果冲突，以本次抓取的新数据为准
-            git pull origin main --rebase -X ours
+            git pull origin ${{ github.ref_name }} --rebase -X ours
             
             # 4. 最后推送
-            git push origin main
+            git push origin ${{ github.ref_name }}
           else
             echo "数据未发生变化，无需更新。"
           fi
