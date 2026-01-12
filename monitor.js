@@ -6,6 +6,7 @@ const { fetchGlobalTopPaid } = require('./appStoreMonitor');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 const HISTORY_FILE = './history.json';
+const RANK_HISTORY_FILE = './rank_history.json';
 
 // --- 配置区 ---
 const RECEIVERS = ['chadqiu0721@gmail.com'];
@@ -58,6 +59,13 @@ try {
   }
 } catch (e) { history = []; }
 
+let rankHistory = {};
+try {
+  if (fs.existsSync(RANK_HISTORY_FILE)) {
+    rankHistory = JSON.parse(fs.readFileSync(RANK_HISTORY_FILE, 'utf8') || '{}');
+  }
+} catch (e) { rankHistory = {}; }
+
 // --- AI Analysis ---
 
 async function callDeepSeek(item, type = 'REDDIT') {
@@ -94,6 +102,12 @@ Region: ${item.region}`;
 3. 技术实现：给出一个 3 天内能写完的 MVP 功能建议。
 请用中文回答。`;
     userContent = `标题: ${item.title}\nSubreddit: ${item.subreddit}`;
+  }
+
+  // Add context about why we picked this app (riser/low rating)
+  if (type === 'APP') {
+    if (item.rankDelta > 0) userContent += `\nTrend: Rising fast (+${item.rankDelta} positions)`;
+    if (item.rating && item.rating < 3.8) userContent += `\nWarning: Low User Rating (${item.rating}/5)`;
   }
 
   try {
@@ -184,53 +198,69 @@ function calculatePriority(app) {
 }
 
 async function runAppStoreDiscovery() {
-  console.log('[AppStore] Starting discovery...');
-  // 1. Fetch data
+  console.log('[AppStore] Starting discovery (Rank 50-200)...');
+  const limit = 200; // Apple RSS API max stable limit
   const [cnApps, usApps] = await Promise.all([
-    fetchGlobalTopPaid('cn', 50),
-    fetchGlobalTopPaid('us', 50)
+    fetchGlobalTopPaid('cn', limit),
+    fetchGlobalTopPaid('us', limit)
   ]);
 
-  const cnIds = new Set(cnApps.map(a => a.id));
-
-  // 2. Identify Arbitrage Opportunities
-  // Logic: High rank in US (Top 100), but NOT in CN Top 200
-  const highPotentialArbitrage = usApps
-    .filter(app => !app.isGame)
-    .filter(app => !cnIds.has(app.id));
-
-  console.log(`[AppStore] Found ${highPotentialArbitrage.length} potential arbitrage apps.`);
-
-  // 3. Select candidates for AI analysis
-  // We want a mix: some US Arbitrage apps, some new interesting CN/US apps we haven't seen.
-  // For MVP, let's just pick:
-  // - Top 1 US Arbitrage App (highest rank)
-  // - Top 1 CN Paid App (that we haven't seen)
-  // - Top 1 US Paid App (that we haven't seen)
-
-  let candidates = [];
-
-  // Arbitrage Candidate
-  const arbitrageCandidate = highPotentialArbitrage.find(app => !history.includes(app.id));
-  if (arbitrageCandidate) {
-    candidates.push({ ...arbitrageCandidate, region: 'US', isArbitrage: true });
-  }
-
-  // Normal Candidates (sort by Priority Score)
-  const allApps = [
+  const allFetched = [
     ...cnApps.map(a => ({ ...a, region: 'CN' })),
     ...usApps.map(a => ({ ...a, region: 'US' }))
   ];
 
-  // Javascript sort is in-place, create copy
-  const sortedApps = allApps
-    .filter(a => !a.isGame)
-    .filter(a => !history.includes(a.id) && !candidates.find(c => c.id === a.id))
-    .map(a => ({ ...a, score: calculatePriority(a) }))
-    .sort((a, b) => b.score - a.score);
+  // 1. Update Rank History & Calculate Deltas
+  const currentRanks = {};
+  allFetched.forEach(app => {
+    const key = `${app.region}_${app.id}`;
+    currentRanks[key] = app.rank;
+    const prevRank = rankHistory[key] || 301; // Assume it was outside top 300
+    app.rankDelta = prevRank - app.rank;
+  });
 
-  // Take top 2 from general pool
-  candidates.push(...sortedApps.slice(0, 2));
+  // Filter for focus area: Rank 50-200 and not a game
+  const targetPool = allFetched.filter(a => a.rank >= 50 && !a.isGame);
+
+  // 1.5. Identify Arbitrage (US app not in CN Top 200)
+  const cnIds = new Set(cnApps.map(a => a.id));
+  targetPool.forEach(app => {
+    if (app.region === 'US' && !cnIds.has(app.id)) {
+      app.isArbitrage = true;
+    }
+  });
+
+  // 2. Identify Interesting Apps
+  // Filter out apps we've already analyzed
+  const unanalyzedPool = targetPool.filter(a => !history.includes(a.id));
+
+  // A. Fast Risers
+  const fastRisers = unanalyzedPool
+    .filter(a => a.rankDelta > 10) // Jumped more than 10 spots
+    .sort((a, b) => b.rankDelta - a.rankDelta)
+    .slice(0, 2);
+
+  // B. Potential Complaints (Low Rating but still in Top 200)
+  const lowRatingApps = unanalyzedPool
+    .filter(a => a.rating > 0 && a.rating < 3.8)
+    .filter(a => !fastRisers.find(r => r.id === a.id)) // Avoid duplicates
+    .sort((a, b) => a.rating - b.rating)
+    .slice(0, 2);
+
+  // C. General High Priority from the rest
+  let candidates = [...fastRisers, ...lowRatingApps];
+
+  if (candidates.length < 3) {
+    const remaining = unanalyzedPool
+      .filter(a => !candidates.find(c => c.id === a.id))
+      .map(a => ({ ...a, score: calculatePriority(a) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3 - candidates.length);
+    candidates.push(...remaining);
+  }
+
+  // Save current ranks for next run (global side effect, but will be written at end of run())
+  rankHistory = currentRanks;
 
   return candidates;
 }
@@ -280,11 +310,13 @@ async function run() {
       console.log(`Analyzing App: ${app.name} (${app.region})`);
       const analysis = await callDeepSeek(app, 'APP');
       const arbBadge = app.isArbitrage ? `<span style="background: #c0392b; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-right: 5px;">🔥 全球信息差</span>` : "";
+      const trendBadge = app.rankDelta > 0 ? `<span style="background: #27ae60; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-right: 5px;">📈 排名上升 (+${app.rankDelta})</span>` : "";
+      const complaintBadge = (app.rating && app.rating < 3.8) ? `<span style="background: #d35400; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-right: 5px;">⚠️ 吐槽较多 (${app.rating}⭐)</span>` : "";
 
       emailHtml += `
             <div style="margin-bottom: 30px; padding: 15px; background-color: #f0f7fb; border-radius: 8px;">
-              ${arbBadge}
-              <span style="background: #2980b9; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">${app.region} Top Paid</span>
+              ${arbBadge} ${trendBadge} ${complaintBadge}
+              <span style="background: #2980b9; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">${app.region} Rank ${app.rank}</span>
               <h3 style="margin-top: 10px; color: #333;">${app.name} <span style="font-weight: normal; font-size: 0.8em; color: #777;">(${app.primaryGenre} - ${app.priceFormatted})</span></h3>
               <div style="color: #555; font-size: 14px; line-height: 1.6;">${analysis.replace(/\n/g, '<br>')}</div>
               <p><a href="${app.appUrl}" style="color: #2980b9; font-weight: bold; text-decoration: none;">查看 App Store &rarr;</a></p>
@@ -296,6 +328,7 @@ async function run() {
   // Update History
   if (history.length > 2000) history = history.slice(-1000);
   fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2));
+  fs.writeFileSync(RANK_HISTORY_FILE, JSON.stringify(rankHistory, null, 2));
 
   // Send Email
   try {

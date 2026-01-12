@@ -43,8 +43,8 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # 1. 检查 history.json 是否有变化
-          git add history.json
+          # 1. 检查数据是否有变化
+          git add history.json rank_history.json
           
           if ! git diff --cached --quiet; then
             echo "检测到数据更新，正在保存..."
