@@ -91,13 +91,14 @@ try {
 
 // --- AI Analysis ---
 
-async function callDeepSeek(item, type = 'REDDIT') {
+async function callDeepSeek(itemOrItems, type = 'REDDIT') {
   if (!DEEPSEEK_API_KEY) return "AI Key 未配置";
 
   let systemPrompt = "";
   let userContent = "";
 
   if (type === 'APP') {
+    const item = itemOrItems;
     systemPrompt = `你是一位拥有 10 年经验的全球化产品经理和全栈开发者。你的任务是分析 App Store 榜单中的潜在商机。
 分析维度：
 1. 核心痛点 (Core Painpoint)：用一句话说明它解决了什么刚需。
@@ -110,27 +111,43 @@ async function callDeepSeek(item, type = 'REDDIT') {
 
 输出要求： 语言简练，直击要害，拒绝废话。使用 Markdown 格式。`;
 
-    // Construct rich context for the App
     userContent = `App Name: ${item.name}
 Category: ${item.primaryGenre}
 Price: ${item.priceFormatted}
 Description: ${item.description ? item.description.slice(0, 500) + "..." : "No description"}
 Region: ${item.region}`;
 
+    if (item.rankDelta > 0) userContent += `\nTrend: Rising fast (+${item.rankDelta} positions)`;
+    if (item.rating && item.rating < 3.8) userContent += `\nWarning: Low User Rating (${item.rating}/5)`;
+
+  } else if (type === 'SOCIAL_BATCH') {
+    // New logic for merging multiple social posts
+    const items = itemOrItems;
+    systemPrompt = `你是一个资深的产品挖掘专家。我依然给你看一组来自社交媒体（小红书/知乎/V2EX）的相关帖子。这些帖子讨论的可能是同一个软件、同一个痛点或同一类需求。
+请你对这组信息进行【合并归纳分析】：
+
+1. **核心话题归纳**：这些帖子在共同吐槽什么，或者在寻找什么样的工具？（用一句话总结）
+2. **用户真实痛点**：用户不满意的点到底在哪里？（是太贵、功能缺失、还是体验差？）
+3. **商机判断**：
+   - 这是一个伪需求还是真刚需？
+   - 如果你要做一个独立开发产品来解决这个问题，你会做什么？（给出一个 MVP 方案）
+
+输出格式：请用 Markdown 输出，结构清晰。如果帖子内容完全不相关，请分别简短概括。`;
+
+    userContent = `以下是收集到的相关讨论帖：\n\n`;
+    items.forEach((it, idx) => {
+      userContent += `[帖子 ${idx + 1}] 标题: ${it.title}\n来源: ${it.source}\n链接: ${it.url}\n\n`;
+    });
+
   } else {
-    // Reddit & Social Media Prompt
+    // Reddit (Single Item)
+    const item = itemOrItems;
     systemPrompt = `你是一个毒舌但专业的全栈开发和产品经理。请分析用户在社交媒体（Reddit/小红书/V2EX/知乎）上的吐槽或新需求：
 1. 吐槽点/缺失点：用户最讨厌现有工具的哪一个具体功能或缺失？
 2. 盈利机会：如果做一个“极简版”或“增强版”，用户愿意付钱吗？
 3. 技术实现：给出一个 3 天内能写完的 MVP 功能建议。
 请用中文回答。`;
     userContent = `标题: ${item.title}\nSource: ${item.source || item.subreddit}`;
-  }
-
-  // Add context about why we picked this app (riser/low rating)
-  if (type === 'APP') {
-    if (item.rankDelta > 0) userContent += `\nTrend: Rising fast (+${item.rankDelta} positions)`;
-    if (item.rating && item.rating < 3.8) userContent += `\nWarning: Low User Rating (${item.rating}/5)`;
   }
 
   try {
@@ -142,7 +159,7 @@ Region: ${item.region}`;
       ]
     }, {
       headers: { 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` },
-      timeout: 60000 // 60s timeout for longer analysis
+      timeout: 60000
     });
     return response.data.choices[0].message.content;
   } catch (e) {
@@ -399,17 +416,26 @@ async function run() {
 
   // --- Process Social Media (RSSHub) ---
   if (rssFindings.length > 0) {
-    emailHtml += `<h2 style="color: #8e44ad; border-bottom: 2px solid #8e44ad; padding-bottom: 5px; margin-top: 40px;">💬 社交媒体热议 (CN)</h2>`;
-    for (const item of rssFindings) {
-      console.log(`Analyzing Social: ${item.title}`);
-      const analysis = await callDeepSeek(item, 'SOCIAL');
+    emailHtml += `<h2 style="color: #8e44ad; border-bottom: 2px solid #8e44ad; padding-bottom: 5px; margin-top: 40px;">💬 社交媒体热议 (CN) - 话题聚合</h2>`;
 
+    // Call AI with ALL items at once
+    console.log(`Analyzing Social Batch: ${rssFindings.length} items...`);
+    const analysis = await callDeepSeek(rssFindings, 'SOCIAL_BATCH');
+
+    // Add the Analysis Report
+    emailHtml += `
+          <div style="margin-bottom: 30px; padding: 15px; background-color: #fcf6ff; border-radius: 8px;">
+            <h3 style="margin-top: 10px; color: #333;">🤖 AI 深度归纳报告</h3>
+            <div style="color: #555; font-size: 14px; line-height: 1.6;">${analysis.replace(/\n/g, '<br>')}</div>
+          </div>`;
+
+    // List the individual sources below
+    emailHtml += `<h4 style="color: #666; margin-top: 20px;">📌 参考原帖：</h4>`;
+    for (const item of rssFindings) {
       emailHtml += `
-            <div style="margin-bottom: 30px; padding: 15px; background-color: #fcf6ff; border-radius: 8px;">
-              <span style="background: #8e44ad; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">${item.source}</span>
-              <h3 style="margin-top: 10px; color: #333;">${item.title}</h3>
-              <div style="color: #555; font-size: 14px; line-height: 1.6;">${analysis.replace(/\n/g, '<br>')}</div>
-              <p><a href="${item.url}" style="color: #8e44ad; font-weight: bold; text-decoration: none;">查看原文 &rarr;</a></p>
+            <div style="margin-bottom: 10px; padding: 10px; border-left: 3px solid #8e44ad; background-color: #f9f9f9;">
+              <span style="background: #8e44ad; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-right: 5px;">${item.source}</span>
+              <a href="${item.url}" style="color: #333; text-decoration: none; font-weight: bold;">${item.title}</a>
             </div>`;
       history.push(item.id);
     }
