@@ -48,7 +48,8 @@ const REDDIT_CONFIG = [
   }
 ];
 
-const RSSHUB_BASE = 'https://rsshub.app';
+// const RSSHUB_BASE = 'https://rsshub.app';
+const RSSHUB_BASE = 'https://rsshub.rssforever.com'; // Mirror that works for V2EX
 const RSSHUB_CONFIG = [
   {
     name: 'V2EX',
@@ -57,15 +58,15 @@ const RSSHUB_CONFIG = [
     keywords: ['求推荐', '怎么没有', '吐槽', '痛点']
   },
   {
-    name: 'Xiaohongshu (via Bing)',
-    // site:xiaohongshu.com (求推荐 OR 怎么没有 OR 吐槽)
-    url: `${RSSHUB_BASE}/bing/search/site:xiaohongshu.com%20(%E6%B1%82%E6%8E%A8%E8%8D%90%20OR%20%E6%80%8E%E4%B9%88%E6%B2%A1%E6%9C%89%20OR%20%E5%90%90%E6%A7%BD)`,
+    name: 'Xiaohongshu (via Bing RSS)',
+    // Direct Bing RSS: site:xiaohongshu.com (求推荐 OR 怎么没有 OR 吐槽)
+    url: `https://www.bing.com/search?format=rss&q=site%3Axiaohongshu.com+%28%E6%B1%82%E6%8E%A8%E8%8D%90+OR+%E6%80%8E%E4%B9%88%E6%B2%A1%E6%9C%89+OR+%E5%90%90%E6%A7%BD%29`,
     type: 'SEARCH'
   },
   {
-    name: 'Zhihu (via Bing)',
-    // site:zhihu.com/question (求推荐 OR 怎么没有 OR 吐槽)
-    url: `${RSSHUB_BASE}/bing/search/site:zhihu.com%2Fquestion%20(%E6%B1%82%E6%8E%A8%E8%8D%90%20OR%20%E6%80%8E%E4%B9%88%E6%B2%A1%E6%9C%89%20OR%20%E5%90%90%E6%A7%BD)`,
+    name: 'Zhihu (via Bing RSS)',
+    // Direct Bing RSS: site:zhihu.com/question (求推荐 OR 怎么没有 OR 吐槽)
+    url: `https://www.bing.com/search?format=rss&q=site%3Azhihu.com%2Fquestion+%28%E6%B1%82%E6%8E%A8%E8%8D%90+OR+%E6%80%8E%E4%B9%88%E6%B2%A1%E6%9C%89+OR+%E5%90%90%E6%A7%BD%29`,
     type: 'SEARCH'
   }
 ];
