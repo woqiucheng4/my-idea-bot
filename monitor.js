@@ -159,11 +159,13 @@ async function runRedditDiscovery() {
 
   for (const config of REDDIT_CONFIG) {
     try {
-      const url = `https://old.reddit.com/r/${config.subreddit}/new.rss`;
+      // const url = `https://old.reddit.com/r/${config.subreddit}/new.rss`;
+      const url = `https://snoo.habedieeh.re/r/${config.subreddit}/rss`; // Using Redlib instance to avoid 403
       const response = await axios.get(url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
-        }
+        },
+        timeout: 10000
       });
       const xml = response.data;
       const entryMatches = Array.from(xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g));
