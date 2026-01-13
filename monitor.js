@@ -1,6 +1,7 @@
 const axios = require('axios');
 const { Resend } = require('resend');
 const fs = require('fs');
+const { marked } = require('marked'); // Import marked for Markdown to HTML conversion
 const { fetchGlobalTopPaid } = require('./appStoreMonitor');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -404,19 +405,19 @@ async function run() {
       const analysis = await callDeepSeek(item, 'REDDIT');
 
       emailHtml += `
-            <div style="margin-bottom: 30px; padding: 15px; background-color: #fffaf5; border-radius: 8px;">
+        < div style = "margin-bottom: 30px; padding: 15px; background-color: #fffaf5; border-radius: 8px;" >
               <span style="background: #e67e22; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">r/${item.subreddit}</span>
               <h3 style="margin-top: 10px; color: #333;">${item.title}</h3>
-              <div style="color: #555; font-size: 14px; line-height: 1.6;">${analysis.replace(/\n/g, '<br>')}</div>
+              <div style="color: #555; font-size: 14px; line-height: 1.6;">${marked.parse(analysis)}</div>
               <p><a href="${item.url}" style="color: #e67e22; font-weight: bold; text-decoration: none;">去 Reddit 围观 &rarr;</a></p>
-            </div>`;
+            </div > `;
       history.push(item.id);
     }
   }
 
   // --- Process Social Media (RSSHub) ---
   if (rssFindings.length > 0) {
-    emailHtml += `<h2 style="color: #8e44ad; border-bottom: 2px solid #8e44ad; padding-bottom: 5px; margin-top: 40px;">💬 社交媒体热议 (CN) - 话题聚合</h2>`;
+    emailHtml += `< h2 style = "color: #8e44ad; border-bottom: 2px solid #8e44ad; padding-bottom: 5px; margin-top: 40px;" >💬 社交媒体热议(CN) - 话题聚合</h2 > `;
 
     // Call AI with ALL items at once
     console.log(`Analyzing Social Batch: ${rssFindings.length} items...`);
@@ -424,41 +425,41 @@ async function run() {
 
     // Add the Analysis Report
     emailHtml += `
-          <div style="margin-bottom: 30px; padding: 15px; background-color: #fcf6ff; border-radius: 8px;">
+        < div style = "margin-bottom: 30px; padding: 15px; background-color: #fcf6ff; border-radius: 8px;" >
             <h3 style="margin-top: 10px; color: #333;">🤖 AI 深度归纳报告</h3>
-            <div style="color: #555; font-size: 14px; line-height: 1.6;">${analysis.replace(/\n/g, '<br>')}</div>
-          </div>`;
+            <div style="color: #555; font-size: 14px; line-height: 1.6;">${marked.parse(analysis)}</div>
+          </div > `;
 
     // List the individual sources below
-    emailHtml += `<h4 style="color: #666; margin-top: 20px;">📌 参考原帖：</h4>`;
+    emailHtml += `< h4 style = "color: #666; margin-top: 20px;" >📌 参考原帖：</h4 > `;
     for (const item of rssFindings) {
       emailHtml += `
-            <div style="margin-bottom: 10px; padding: 10px; border-left: 3px solid #8e44ad; background-color: #f9f9f9;">
+        < div style = "margin-bottom: 10px; padding: 10px; border-left: 3px solid #8e44ad; background-color: #f9f9f9;" >
               <span style="background: #8e44ad; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-right: 5px;">${item.source}</span>
               <a href="${item.url}" style="color: #333; text-decoration: none; font-weight: bold;">${item.title}</a>
-            </div>`;
+            </div > `;
       history.push(item.id);
     }
   }
 
   // --- Process App Store ---
   if (appFindings.length > 0) {
-    emailHtml += `<h2 style="color: #2980b9; border-bottom: 2px solid #2980b9; padding-bottom: 5px; margin-top: 40px;">📱 App Store 商机洞察</h2>`;
+    emailHtml += `< h2 style = "color: #2980b9; border-bottom: 2px solid #2980b9; padding-bottom: 5px; margin-top: 40px;" >📱 App Store 商机洞察</h2 > `;
     for (const app of appFindings) {
       console.log(`Analyzing App: ${app.name} (${app.region})`);
       const analysis = await callDeepSeek(app, 'APP');
-      const arbBadge = app.isArbitrage ? `<span style="background: #c0392b; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-right: 5px;">🔥 全球信息差</span>` : "";
-      const trendBadge = app.rankDelta > 0 ? `<span style="background: #27ae60; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-right: 5px;">📈 排名上升 (+${app.rankDelta})</span>` : "";
-      const complaintBadge = (app.rating && app.rating < 3.8) ? `<span style="background: #d35400; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-right: 5px;">⚠️ 吐槽较多 (${app.rating}⭐)</span>` : "";
+      const arbBadge = app.isArbitrage ? `< span style = "background: #c0392b; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-right: 5px;" >🔥 全球信息差</span > ` : "";
+      const trendBadge = app.rankDelta > 0 ? `< span style = "background: #27ae60; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-right: 5px;" >📈 排名上升(+${app.rankDelta})</span > ` : "";
+      const complaintBadge = (app.rating && app.rating < 3.8) ? `< span style = "background: #d35400; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-right: 5px;" >⚠️ 吐槽较多(${app.rating}⭐)</span > ` : "";
 
       emailHtml += `
-            <div style="margin-bottom: 30px; padding: 15px; background-color: #f0f7fb; border-radius: 8px;">
-              ${arbBadge} ${trendBadge} ${complaintBadge}
+        < div style = "margin-bottom: 30px; padding: 15px; background-color: #f0f7fb; border-radius: 8px;" >
+          ${arbBadge} ${trendBadge} ${complaintBadge}
               <span style="background: #2980b9; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">${app.region} Rank ${app.rank}</span>
               <h3 style="margin-top: 10px; color: #333;">${app.name} <span style="font-weight: normal; font-size: 0.8em; color: #777;">(${app.primaryGenre} - ${app.priceFormatted})</span></h3>
-              <div style="color: #555; font-size: 14px; line-height: 1.6;">${analysis.replace(/\n/g, '<br>')}</div>
+              <div style="color: #555; font-size: 14px; line-height: 1.6;">${marked.parse(analysis)}</div>
               <p><a href="${app.appUrl}" style="color: #2980b9; font-weight: bold; text-decoration: none;">查看 App Store &rarr;</a></p>
-            </div>`;
+            </div > `;
       history.push(app.id);
     }
   }
@@ -473,7 +474,7 @@ async function run() {
     const data = await resend.emails.send({
       from: 'Global-Insight-Bot <onboarding@resend.dev>',
       to: RECEIVERS,
-      subject: `[${new Date().toLocaleDateString()}] 全球信息差 & 用户槽点日报`,
+      subject: `[${new Date().toLocaleDateString()}]全球信息差 & 用户槽点日报`,
       html: emailHtml
     });
 
