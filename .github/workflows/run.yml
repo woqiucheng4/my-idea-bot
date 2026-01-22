@@ -54,7 +54,7 @@ jobs:
             git commit -m "Update lead history [skip ci]"
             
             # 3. 清理未暂存的文件 (如 npm install 产生的 package-lock.json 变更)
-            git checkout .
+            git reset --hard
             
             # 4. 关键：拉取远程更新并进行变基合并
             # -X ours 意味着如果冲突，以本次抓取的新数据为准
