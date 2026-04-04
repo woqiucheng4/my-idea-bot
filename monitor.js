@@ -8,6 +8,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 const HISTORY_FILE = './history.json';
 const RANK_HISTORY_FILE = './rank_history.json';
+const EXPORT_FILE = './data_export.json';
 
 // --- 配置区 ---
 const RECEIVERS = ['chadqiu0721@gmail.com'];
@@ -89,6 +90,13 @@ try {
     rankHistory = JSON.parse(fs.readFileSync(RANK_HISTORY_FILE, 'utf8') || '{}');
   }
 } catch (e) { rankHistory = {}; }
+
+let dataExport = [];
+try {
+  if (fs.existsSync(EXPORT_FILE)) {
+    dataExport = JSON.parse(fs.readFileSync(EXPORT_FILE, 'utf8') || '[]');
+  }
+} catch (e) { dataExport = []; }
 
 // --- AI Analysis ---
 
@@ -380,6 +388,7 @@ async function runAppStoreDiscovery() {
 
 async function run() {
   console.log('--- Global Monitor Started ---');
+  const today = new Date().toISOString().split('T')[0];
 
   // Parallel execution of discovery
   const [redditFindings, appFindings, rssFindings] = await Promise.all([
@@ -412,6 +421,15 @@ async function run() {
               <p><a href="${item.url}" style="color: #e67e22; font-weight: bold; text-decoration: none;">去 Reddit 围观 &rarr;</a></p>
             </div>`;
       history.push(item.id);
+
+      dataExport.push({
+        date: today,
+        type: 'REDDIT',
+        title: item.title,
+        url: item.url,
+        source: `r/${item.subreddit}`,
+        analysis: analysis
+      });
     }
   }
 
@@ -429,6 +447,13 @@ async function run() {
             <h3 style="margin-top: 10px; color: #333;">🤖 AI 深度归纳报告</h3>
             <div style="color: #555; font-size: 14px; line-height: 1.6;">${marked.parse(analysis)}</div>
           </div>`;
+
+    dataExport.push({
+      date: today,
+      type: 'SOCIAL_BATCH',
+      items: rssFindings.map(it => ({ title: it.title, url: it.url, source: it.source })),
+      analysis: analysis
+    });
 
     // List the individual sources below
     emailHtml += `<h4 style="color: #666; margin-top: 20px;">📌 参考原帖：</h4>`;
@@ -461,6 +486,18 @@ async function run() {
               <p><a href="${app.appUrl}" style="color: #2980b9; font-weight: bold; text-decoration: none;">查看 App Store &rarr;</a></p>
             </div>`;
       history.push(app.id);
+
+      dataExport.push({
+        date: today,
+        type: 'APP',
+        name: app.name,
+        region: app.region,
+        rank: app.rank,
+        price: app.priceFormatted,
+        genre: app.primaryGenre,
+        url: app.appUrl,
+        analysis: analysis
+      });
     }
   }
 
@@ -468,6 +505,7 @@ async function run() {
   if (history.length > 2000) history = history.slice(-1000);
   fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2));
   fs.writeFileSync(RANK_HISTORY_FILE, JSON.stringify(rankHistory, null, 2));
+  fs.writeFileSync(EXPORT_FILE, JSON.stringify(dataExport, null, 2));
 
   // Send Email
   try {
